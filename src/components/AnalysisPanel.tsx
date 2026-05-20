@@ -5,15 +5,19 @@ import type { ParsedFile } from "@/lib/analyzer/types";
 interface AnalysisPanelProps {
   file: ParsedFile | null;
   architecturalAnalysis: string;
+  dependencies: string[];
   suggestions: string[];
   loading?: boolean;
+  error?: string | null;
 }
 
 export function AnalysisPanel({
   file,
   architecturalAnalysis,
+  dependencies,
   suggestions,
   loading,
+  error,
 }: AnalysisPanelProps) {
   if (!file) {
     return (
@@ -26,7 +30,20 @@ export function AnalysisPanel({
   if (loading) {
     return (
       <div className="flex h-full items-center justify-center text-zinc-400 text-sm">
-        Analiz yükleniyor…
+        Claude analizi yükleniyor…
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center gap-2 px-4 text-center">
+        <p className="text-sm text-red-400" role="alert">
+          {error}
+        </p>
+        <p className="text-xs text-zinc-500">
+          .env dosyasında ANTHROPIC_API_KEY tanımlı olduğundan emin olun.
+        </p>
       </div>
     );
   }
@@ -86,6 +103,21 @@ export function AnalysisPanel({
           </ul>
         )}
       </section>
+
+      {dependencies.length > 0 && (
+        <section>
+          <h3 className="text-sm font-medium text-violet-400 mb-2">
+            Bağımlılıklar (Claude)
+          </h3>
+          <ul className="list-disc list-inside text-sm text-zinc-300 space-y-1">
+            {dependencies.map((d, i) => (
+              <li key={i} className="font-mono text-xs break-all">
+                {d}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <section>
         <h3 className="text-sm font-medium text-sky-400 mb-2">

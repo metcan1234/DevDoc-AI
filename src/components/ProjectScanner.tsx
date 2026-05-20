@@ -12,7 +12,9 @@ export function ProjectScanner() {
   const [scanResult, setScanResult] = useState<ScanResult | null>(null);
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState("");
+  const [dependencies, setDependencies] = useState<string[]>([]);
   const [suggestions, setSuggestions] = useState<string[]>([]);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [vaultFiles, setVaultFiles] = useState<VaultPreviewFile[]>([]);
   const [linkGraph, setLinkGraph] = useState<LinkGraphEdge[]>([]);
   const [vaultOutputDir, setVaultOutputDir] = useState<string | null>(null);
@@ -22,6 +24,39 @@ export function ProjectScanner() {
 
   const selectedFile: ParsedFile | null =
     scanResult?.files.find((f) => f.relativePath === selectedPath) ?? null;
+
+  const loadAnalysis = useCallback(
+    async (file: ParsedFile, projectRoot: string) => {
+      setLoading("analysis");
+      setAnalysisError(null);
+      try {
+        const res = await fetch("/api/analyze", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            projectPath: projectRoot,
+            file,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error ?? "Analiz hatası");
+        }
+        setAnalysis(data.architecturalAnalysis ?? "");
+        setDependencies(data.dependencies ?? []);
+        setSuggestions(data.refactorSuggestions ?? []);
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : "Analiz başarısız.";
+        setAnalysisError(msg);
+        setAnalysis("");
+        setDependencies([]);
+        setSuggestions([]);
+      } finally {
+        setLoading(null);
+      }
+    },
+    []
+  );
 
   const handleScan = useCallback(async () => {
     setError(null);
@@ -36,36 +71,22 @@ export function ProjectScanner() {
       if (!res.ok) throw new Error(data.error ?? "Tarama hatası");
       setScanResult(data);
       if (data.files?.length > 0) {
-        setSelectedPath(data.files[0].relativePath);
+        const first = data.files[0].relativePath;
+        setSelectedPath(first);
+        void loadAnalysis(data.files[0], data.projectPath);
       }
     } catch (e) {
       setError(e instanceof Error ? e.message : "Bilinmeyen hata");
     } finally {
       setLoading(null);
     }
-  }, [projectPath]);
-
-  const loadAnalysis = useCallback(async (file: ParsedFile) => {
-    setLoading("analysis");
-    try {
-      const arch = `**[Yer tutucu]** ${file.relativePath} — ${file.symbols.length} sembol, ${file.imports.length} import. Claude API bağlandığında gerçek mimari analiz üretilecek.`;
-      const sug = [
-        "Modül sorumluluklarını tek bir katmanda toplayın.",
-        "Public API için tip tanımlarını/export'ları netleştirin.",
-        "Test kapsamı düşük semboller için birim test ekleyin.",
-      ];
-      setAnalysis(arch);
-      setSuggestions(sug);
-    } finally {
-      setLoading(null);
-    }
-  }, []);
+  }, [projectPath, loadAnalysis]);
 
   const handleSelectFile = useCallback(
     (path: string) => {
       setSelectedPath(path);
       const file = scanResult?.files.find((f) => f.relativePath === path);
-      if (file) void loadAnalysis(file);
+      if (file && scanResult) void loadAnalysis(file, scanResult.projectPath);
     },
     [scanResult, loadAnalysis]
   );
@@ -150,7 +171,9 @@ export function ProjectScanner() {
             disabled={loading === "vault" || !scanResult}
             className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white hover:bg-violet-500 disabled:opacity-50"
           >
-            {loading === "vault" ? "Oluşturuluyor…" : "Vault Oluştur"}
+            {loading === "vault"
+              ? "Claude + Vault…"
+              : "Vault Oluştur (Claude)"}
           </button>
           <button
             type="button"
@@ -188,8 +211,10 @@ export function ProjectScanner() {
           <AnalysisPanel
             file={selectedFile}
             architecturalAnalysis={analysis}
+            dependencies={dependencies}
             suggestions={suggestions}
             loading={loading === "analysis"}
+            error={analysisError}
           />
         </section>
 

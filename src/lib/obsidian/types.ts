@@ -1,4 +1,5 @@
 import type { ScanResult } from "@/lib/analyzer/types";
+import type { FileAnalysis } from "@/lib/claude/types";
 
 export interface VaultDocument {
   /** Obsidian note filename without path (e.g. `UserService.md`). */
@@ -27,7 +28,7 @@ export interface LinkGraphEdge {
 
 export interface GenerateVaultInput {
   scanResult: ScanResult;
-  /** Optional architectural analysis per file (Claude stub / future API). */
-  analysisByFile?: Record<string, string>;
+  /** Claude analysis per source relative path. */
+  analysisByFile?: Record<string, FileAnalysis>;
   outputDir?: string;
 }

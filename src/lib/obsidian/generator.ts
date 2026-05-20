@@ -1,6 +1,7 @@
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import type { ParsedFile } from "@/lib/analyzer/types";
+import type { FileAnalysis } from "@/lib/claude/types";
 import type {
   GenerateVaultInput,
   LinkGraphEdge,
@@ -38,14 +39,14 @@ export async function generateVault(
       linkGraph.push({ from: noteId, to: rel.noteId });
     }
 
-    const analysis =
+    const fileAnalysis =
       analysisByFile[file.relativePath] ??
-      generatePlaceholderAnalysis(file);
+      buildPlaceholderFileAnalysis(file);
 
     const content = buildMarkdownNote(
       file,
       noteId,
-      analysis,
+      fileAnalysis,
       wikiLinks
     );
 
@@ -158,35 +159,62 @@ function resolveImportToFile(
   return byName?.relativePath ?? null;
 }
 
-function generatePlaceholderAnalysis(file: ParsedFile): string {
+function buildPlaceholderFileAnalysis(file: ParsedFile): FileAnalysis {
   const symbolList =
     file.symbols.length > 0
-      ? file.symbols.map((s) => `- \`${s.kind}\` **${s.name}** (satır ${s.line ?? "?"})`).join("\n")
+      ? file.symbols
+          .map((s) => `- \`${s.kind}\` **${s.name}** (satır ${s.line ?? "?"})`)
+          .join("\n")
       : "_Sembol tespit edilmedi._";
 
-  return `## Mimari Analiz (Yer Tutucu)
+  return {
+    architecturalAnalysis: `## Mimari Analiz (Yer Tutucu)
 
 Bu dosya **${file.language}** dilinde, ${file.lineCount} satırdan oluşuyor.
 
 ### Tespit edilen semboller
 ${symbolList}
 
-### Bağımlılıklar
-${
-  file.imports.length > 0
-    ? file.imports.map((i) => `- \`${i.module}\``).join("\n")
-    : "_İçe aktarma bulunamadı._"
+> Claude analizi bu dosya için üretilmedi. \`ANTHROPIC_API_KEY\` ayarlayıp vault'u yeniden oluşturun.`,
+    dependencies: file.imports.map((i) => i.module),
+    refactorSuggestions: [
+      "Claude API ile gerçek refactor önerileri almak için vault oluşturmayı tekrar çalıştırın.",
+    ],
+    analyzedAt: new Date().toISOString(),
+  };
 }
 
-> Claude API entegrasyonu sonrası bu bölüm gerçek mimari analiz ile değiştirilecek.`;
+export function formatFileAnalysisForMarkdown(analysis: FileAnalysis): string {
+  const deps =
+    analysis.dependencies.length > 0
+      ? analysis.dependencies.map((d) => `- ${d}`).join("\n")
+      : "_Bağımlılık tespit edilmedi._";
+
+  const refactors =
+    analysis.refactorSuggestions.length > 0
+      ? analysis.refactorSuggestions.map((s) => `- ${s}`).join("\n")
+      : "_Öneri yok._";
+
+  return `## Mimari Analiz
+
+${analysis.architecturalAnalysis}
+
+### Bağımlılıklar
+
+${deps}
+
+### İyileştirme / Refactor Önerileri
+
+${refactors}`;
 }
 
 function buildMarkdownNote(
   file: ParsedFile,
   noteId: string,
-  analysis: string,
+  analysis: FileAnalysis,
   wikiLinks: string[]
 ): string {
+  const analysisBody = formatFileAnalysisForMarkdown(analysis);
   const linksSection =
     wikiLinks.length > 0
       ? wikiLinks.map((id) => `- [[${id}]]`).join("\n")
@@ -206,7 +234,7 @@ tags:
 
 **Kaynak:** \`${file.relativePath}\`
 
-${analysis}
+${analysisBody}
 
 ## İlişkili Bileşenler
 
